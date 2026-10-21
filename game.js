@@ -25,7 +25,6 @@ const step = (ms) => { const st = S; return wait(ms).then(() => { if (S !== st) 
 window.addEventListener('unhandledrejection', (e) => { if (e.reason === STALE) e.preventDefault(); });
 const rand = (a, b) => a + Math.random() * (b - a);
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-const ingSrc = (id) => `assets/ing/${id}.png`;
 const dishSrc = (id) => `assets/dish/${id}.png`;
 
 let level = 1;
@@ -232,7 +231,7 @@ function render() {
     const el = document.createElement('div');
     el.className = 'cust empty';
     el.style.left = `${x}px`;
-    el.innerHTML = '<div class="shadow"></div><div class="body"></div><img class="head" alt=""><div class="bubble"><img alt=""></div><img class="tick" src="assets/ui/icon_tick.png" alt="">';
+    el.innerHTML = '<div class="shadow"></div><div class="body"></div><img class="head" alt=""><div class="bubble"><img alt=""><span class="qty">x3</span></div><img class="tick" src="assets/ui/icon_tick.png" alt="">';
     $('#customers').appendChild(el);
     return { el, order: null, busy: false };
   });
@@ -278,7 +277,7 @@ function buildPlate(p, idx) {
   }
   p.slots.forEach((s) => {
     const img = document.createElement('img');
-    img.className = 'item'; img.src = ingSrc(s.id); img.draggable = false;
+    img.className = 'item'; img.src = dishSrc(s.id); img.draggable = false;
     img.addEventListener('pointerdown', (e) => { e.preventDefault(); tapItem(p, s); });
     s.el = img; el.appendChild(img);
   });
@@ -435,11 +434,13 @@ function beltPoint(u) {
   return { x: BELT.x + (x * BELT.w) / BELT.imgW, y: BELT.y + (y * BELT.h) / BELT.imgH };
 }
 
+// kind 'ing' is a single dish sent from a plate; 'dish' is the stack of three it merges into
 function beltItemEl(kind, id) {
   const el = document.createElement('div');
   el.className = `bi ${kind}`;
   if (kind === 'ing') el.style.setProperty('--c', ING_COLOR[id]);
-  el.innerHTML = `<div class="disc"></div><img src="${kind === 'ing' ? ingSrc(id) : dishSrc(id)}" alt="">`;
+  const img = `<img src="${dishSrc(id)}" alt="">`;
+  el.innerHTML = `<div class="disc"></div>${kind === 'ing' ? img : img + img + img}`;
   layer.appendChild(el);
   return el;
 }
@@ -874,7 +875,7 @@ const BOOSTERS = {
     const slots = S.plates.filter((p) => !p.hidden && !p.locked).flatMap((p) => p.slots).filter((s) => !s.taken && !s.link);
     if (slots.length < 2) return false;
     const ids = shuffle(slots.map((s) => s.id));
-    slots.forEach((s, i) => { s.id = ids[i]; s.el.src = ingSrc(s.id); s.el.animate([{ scale: 0.3 }, { scale: 1 }], 300); });
+    slots.forEach((s, i) => { s.id = ids[i]; s.el.src = dishSrc(s.id); s.el.animate([{ scale: 0.3 }, { scale: 1 }], 300); });
     // jostle the plates; physics lets them settle again
     S.plates.forEach((p) => { p.vx += rand(-500, 500); p.vy += rand(100, 500); });
     return true;
