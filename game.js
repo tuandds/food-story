@@ -231,7 +231,7 @@ function render() {
     const el = document.createElement('div');
     el.className = 'cust empty';
     el.style.left = `${x}px`;
-    el.innerHTML = '<div class="shadow"></div><div class="body"></div><img class="head" alt=""><div class="bubble"><img alt=""><span class="qty">x3</span></div><img class="tick" src="assets/ui/icon_tick.png" alt="">';
+    el.innerHTML = '<div class="shadow"></div><div class="body"></div><img class="head" alt=""><div class="bubble"><img alt=""></div><img class="tick" src="assets/ui/icon_tick.png" alt="">';
     $('#customers').appendChild(el);
     return { el, order: null, busy: false };
   });
@@ -434,13 +434,15 @@ function beltPoint(u) {
   return { x: BELT.x + (x * BELT.w) / BELT.imgW, y: BELT.y + (y * BELT.h) / BELT.imgH };
 }
 
-// kind 'ing' is a single dish sent from a plate; 'dish' is the stack of three it merges into
+// kind 'ing' is a single dish sent from a plate; 'dish' is the box the three merge into,
+// labelled with the dish's icon
 function beltItemEl(kind, id) {
   const el = document.createElement('div');
   el.className = `bi ${kind}`;
-  if (kind === 'ing') el.style.setProperty('--c', ING_COLOR[id]);
-  const img = `<img src="${dishSrc(id)}" alt="">`;
-  el.innerHTML = `<div class="disc"></div>${kind === 'ing' ? img : img + img + img}`;
+  el.style.setProperty('--c', ING_COLOR[id]);
+  el.innerHTML = kind === 'ing'
+    ? `<div class="disc"></div><img src="${dishSrc(id)}" alt="">`
+    : `<div class="disc"></div><img class="crate" src="assets/ui/tile_crate.png" alt=""><div class="label"><img src="${dishSrc(id)}" alt=""></div>`;
   layer.appendChild(el);
   return el;
 }
