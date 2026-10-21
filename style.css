@@ -125,7 +125,7 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
   position: absolute; left: 0; top: 0;
   background: url(assets/ui/dow.png) center / 100% 100% no-repeat;
   filter: drop-shadow(0 6px 5px rgba(120,55,0,.35));
-  transition: transform .4s cubic-bezier(.3,1.25,.5,1), opacity .3s;
+  transition: opacity .3s; will-change: transform;
 }
 .plate.spawn { opacity: 0; }
 .plate.vanish { animation: vanish .3s ease-in forwards; }

@@ -143,7 +143,7 @@ function render() {
     return { el, order: null, busy: false };
   });
   S.plates.forEach((p, i) => buildPlate(p, i));
-  layoutPlates(true);
+  layoutPlates();
   updateHud();
   renderQueue();
   S.custs.forEach((c, i) => setTimeout(() => nextCustomer(c), 250 + i * 160));
@@ -183,7 +183,63 @@ const ITEM_POS = {
 };
 const PLATE_ASPECT = 132 / 140; // dow.png is slightly wider than tall
 
-function layoutPlates(instant) {
+function drawPlate(p) {
+  const h = 2 * p.R * PLATE_ASPECT;
+  p.el.style.transform = `translate(${p.x - p.R}px, ${p.y - h / 2}px)`;
+}
+
+// Plates float like bubbles: a constant upward pull, damped motion, and
+// circle-vs-circle / wall collisions. Vertical distances are measured in plate
+// space (y / PLATE_ASPECT) so the slightly flattened plates pack like circles.
+const PHYS = { lift: 2200, damping: 3.2, bounce: 0.25, gap: 4, pad: 8, maxV: 1400, iters: 4, substeps: 3 };
+
+function stepPlates(dt) {
+  const W = table.clientWidth, ps = S.plates, A = PLATE_ASPECT;
+  const h = dt / PHYS.substeps;
+  for (let s = 0; s < PHYS.substeps; s++) {
+    const damp = Math.exp(-PHYS.damping * h);
+    for (const p of ps) {
+      p.vy -= PHYS.lift * h;
+      p.vx *= damp; p.vy *= damp;
+      const v = Math.hypot(p.vx, p.vy);
+      if (v > PHYS.maxV) { p.vx *= PHYS.maxV / v; p.vy *= PHYS.maxV / v; }
+      p.x += p.vx * h;
+      p.y += p.vy * h;
+    }
+    for (let it = 0; it < PHYS.iters; it++) {
+      for (let i = 0; i < ps.length; i++) {
+        const a = ps[i];
+        for (let j = i + 1; j < ps.length; j++) {
+          const b = ps[j];
+          const dx = b.x - a.x, dy = (b.y - a.y) / A;
+          const min = a.R + b.R + PHYS.gap;
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= min * min) continue;
+          const d = Math.sqrt(d2) || 0.01, nx = dx / d, ny = dy / d;
+          const ma = a.R * a.R, mb = b.R * b.R, wa = mb / (ma + mb), wb = ma / (ma + mb);
+          const over = min - d;
+          a.x -= nx * over * wa; a.y -= ny * over * wa * A;
+          b.x += nx * over * wb; b.y += ny * over * wb * A;
+          const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if (vn < 0) {
+            const jimp = (-(1 + PHYS.bounce) * vn) / (1 / ma + 1 / mb);
+            a.vx -= (jimp / ma) * nx; a.vy -= (jimp / ma) * ny;
+            b.vx += (jimp / mb) * nx; b.vy += (jimp / mb) * ny;
+          }
+        }
+      }
+      for (const p of ps) {
+        const top = p.R * A + PHYS.pad;
+        if (p.y < top) { p.y = top; if (p.vy < 0) p.vy *= -PHYS.bounce; }
+        if (p.x < p.R + PHYS.pad) { p.x = p.R + PHYS.pad; if (p.vx < 0) p.vx *= -PHYS.bounce; }
+        if (p.x > W - p.R - PHYS.pad) { p.x = W - p.R - PHYS.pad; if (p.vx > 0) p.vx *= -PHYS.bounce; }
+      }
+    }
+  }
+  ps.forEach(drawPlate);
+}
+
+function layoutPlates() {
   const W = table.clientWidth;
   const gap = 4, pad = 8;
   const placed = [];
@@ -201,14 +257,13 @@ function layoutPlates(instant) {
       if (!best || score < best.score) best = { x, y, score };
     }
     p.x = best.x; p.y = best.y; p.R = r;
+    p.vx = p.vy = 0;
     placed.push(p);
 
     const el = p.el, h = 2 * r * PLATE_ASPECT;
-    if (instant) el.style.transition = 'none';
     el.style.width = `${2 * r}px`;
     el.style.height = `${h}px`;
-    el.style.transform = `translate(${p.x - r}px, ${p.y - h / 2}px)`;
-    if (instant) { el.offsetWidth; el.style.transition = ''; }
+    drawPlate(p);
     const pos = ITEM_POS[p.slots.length];
     const size = r * (p.slots.length === 3 ? 0.8 : 0.92);
     const cy = h * 0.46; // centre of the plate's top face (rim is drawn below)
@@ -268,6 +323,7 @@ function tick(now) {
   last = now;
   if (S && !S.paused) {
     S.offset += dt * BELT_SPEED;
+    stepPlates(dt);
     drawArrows(S.offset);
     S.belt.forEach((b, i) => {
       b.pos += (i - b.pos) * Math.min(1, dt * 9);
@@ -368,7 +424,7 @@ function tapItem(plate, slot) {
     S.plates.splice(S.plates.indexOf(plate), 1);
     plate.el.classList.add('vanish');
     sfx.plate();
-    setTimeout(() => { plate.el.remove(); layoutPlates(false); }, 260);
+    setTimeout(() => plate.el.remove(), 300);
   }
 
   S.jobs++;
@@ -531,9 +587,8 @@ const BOOSTERS = {
     if (slots.length < 2) return false;
     const ids = shuffle(slots.map((s) => s.id));
     slots.forEach((s, i) => { s.id = ids[i]; s.el.src = ingSrc(s.id); s.el.animate([{ scale: 0.3 }, { scale: 1 }], 300); });
-    shuffle(S.plates);
-    S.plates.forEach((p) => { p.px = Math.random(); });
-    layoutPlates(false);
+    // jostle the plates; physics lets them settle again
+    S.plates.forEach((p) => { p.vx += rand(-500, 500); p.vy += rand(100, 500); });
     return true;
   },
   slot() {
