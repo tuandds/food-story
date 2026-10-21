@@ -355,6 +355,7 @@ function tick(now) {
       b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(${b.s})`;
       b.el.style.zIndex = b.z;
     });
+    passServes();
   }
   requestAnimationFrame(tick);
 }
@@ -450,7 +451,6 @@ async function resolve() {
   await wait(400);
   if (S.over) return;
   await doMerges();
-  await doServes();
   S.jobs--;
   checkEnd();
 }
@@ -503,25 +503,29 @@ async function mergeAt(i) {
   await wait(450);
 }
 
-async function doServes() {
-  let served = true;
-  while (served && !S.over) {
-    served = false;
-    for (let i = 0; i < S.belt.length; i++) {
-      const b = S.belt[i];
-      if (b.kind !== 'dish') continue;
-      const c = S.custs.find((c) => c.order === b.id && !c.busy);
-      if (!c) continue;
-      c.busy = true;
-      S.belt.splice(i, 1);
-      updateBeltHud();
-      serve(b, c);
-      served = true;
-      await wait(150);
-      break;
-    }
+// Dishes ride the belt; one is handed over only as it passes under the customer who ordered it.
+const TOP_LANE_Y = BELT.y + ((BELT.cy - BELT.r) * BELT.h) / BELT.imgH;
+const SERVE_REACH = 8; // px either side of the customer's column
+
+function passServes() {
+  if (S.over) return;
+  for (let i = 0; i < S.belt.length; i++) {
+    const b = S.belt[i];
+    if (b.kind !== 'dish' || b.fly || b.merging) continue;
+    const cx = b.x + ITEM_HALF, cy = b.y + ITEM_LIFT;
+    if (Math.abs(cy - TOP_LANE_Y) > 4) continue;
+    const c = S.custs.find((c, k) => c.order === b.id && !c.busy && Math.abs(cx - CUST_X[k]) < SERVE_REACH);
+    if (!c) continue;
+    c.busy = true;
+    S.belt.splice(i, 1);
+    updateBeltHud();
+    serve(b, c);
+    return;
   }
 }
+
+// a dish on the belt that some visible customer is waiting for will be served on its next pass
+const servePending = () => S.belt.some((b) => b.kind === 'dish' && S.custs.some((c) => c.order === b.id && !c.busy));
 
 async function serve(b, c) {
   const r = rel(c.el.querySelector('.bubble'));
@@ -539,14 +543,12 @@ async function serve(b, c) {
   c.order = null;
   nextCustomer(c);
   checkEnd();
-  // a newly arrived customer may already have a dish waiting
-  if (!S.over) { S.jobs++; S.pending = S.pending.then(async () => { await doServes(); S.jobs--; checkEnd(); }); }
 }
 
 function checkEnd() {
   if (S.over) return;
   if (S.served >= S.total) { S.over = true; setTimeout(win, 500); return; }
-  if (S.jobs === 0 && S.belt.length >= S.cap && !S.custs.some((c) => c.busy)) {
+  if (S.jobs === 0 && S.belt.length >= S.cap && !S.custs.some((c) => c.busy) && !servePending()) {
     S.over = true; setTimeout(lose, 400);
   }
 }
