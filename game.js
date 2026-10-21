@@ -106,10 +106,11 @@ function newLevel() {
   if (S) S.belt.forEach((b) => b.el.remove());
   S = {
     cap: BASE_CAP,
-    belt: [], // {kind:'ing'|'dish', id, el, pos, fly}
-    offset: 0, // slot frame: where slot 0 sits on the loop
-    flow: 0, // surface travel, drives the arrows
-    holdUntil: 0,
+    // The belt is a ring of fixed slots rotating together; items keep their slot until
+    // they leave, so gaps stay where they are.
+    slots: new Array(BASE_CAP).fill(null),
+    belt: [], // occupied entries {kind:'ing'|'dish', id, el, slot, rel, fly}
+    offset: 0, // how far the ring has turned, in loops
     plates: plateItems.map((ids) => ({
       r: ids.length === 3 ? rand(0.145, 0.165) : rand(0.112, 0.128), // fraction of table width
       px: Math.random(),
@@ -326,14 +327,13 @@ function tick(now) {
   last = now;
   if (S && !S.paused) {
     S.offset += dt * BELT_SPEED;
-    S.flow += dt * BELT_SPEED;
     stepPlates(dt);
-    drawArrows(S.flow);
-    // slots stay put while a merge is resolving so the dish appears where the middle item was
-    const ease = now < S.holdUntil ? 0 : Math.min(1, dt * 7);
-    S.belt.forEach((b, i) => {
-      b.pos += (i - b.pos) * ease;
-      const p = beltPoint(S.offset - b.pos / S.cap);
+    drawArrows(S.offset);
+    // rel only changes when the ring is re-spaced by the +1 slot booster
+    const ease = Math.min(1, dt * 7);
+    S.belt.forEach((b) => {
+      b.rel += (b.slot / S.cap - b.rel) * ease;
+      const p = beltPoint(S.offset - b.rel);
       b.x = p.x - ITEM_HALF; b.y = p.y - ITEM_LIFT; b.s = 1;
       b.z = Math.round(p.y);
       if (b.fly) {
@@ -426,17 +426,14 @@ function tapItem(plate, slot) {
   slot.el.style.visibility = 'hidden';
   slot.el.style.pointerEvents = 'none';
 
-  // insert right behind identical ingredients
-  let at = S.belt.length;
-  for (let i = S.belt.length - 1; i >= 0; i--) {
-    if (S.belt[i].kind === 'ing' && S.belt[i].id === slot.id) { at = i + 1; break; }
-  }
+  const k = pickSlot(slot.id, from.x + from.w / 2, from.y + from.h / 2);
   const el = beltItemEl('ing', slot.id);
   const entry = {
-    kind: 'ing', id: slot.id, el, pos: at,
+    kind: 'ing', id: slot.id, el, slot: k, rel: k / S.cap,
     fly: { x: from.x + from.w / 2 - ITEM_HALF, y: from.y - 6, s: from.w / 40, t0: performance.now(), dur: 380 },
   };
-  S.belt.splice(at, 0, entry);
+  S.slots[k] = entry;
+  S.belt.push(entry);
   updateBeltHud();
 
   // empty plate disappears, the rest float up
@@ -451,6 +448,28 @@ function tapItem(plate, slot) {
   S.pending = S.pending.then(resolve);
 }
 
+const ringDist = (a, b) => { const d = Math.abs(a - b) % S.cap; return Math.min(d, S.cap - d); };
+
+// Empty slot for a new ingredient: as close as possible to its twins on the ring,
+// otherwise the free slot currently nearest to where it was tapped.
+function pickSlot(id, x, y) {
+  const twins = S.belt.filter((b) => b.kind === 'ing' && b.id === id && !b.merging).map((b) => b.slot);
+  let best = -1, bestScore = Infinity;
+  S.slots.forEach((occ, k) => {
+    if (occ) return;
+    const p = beltPoint(S.offset - k / S.cap);
+    const near = twins.length ? Math.min(...twins.map((t) => ringDist(t, k))) : 0;
+    const score = near * 1e4 + Math.hypot(p.x - x, p.y - y);
+    if (score < bestScore) { bestScore = score; best = k; }
+  });
+  return best;
+}
+
+function vacate(b) {
+  S.slots[b.slot] = null;
+  S.belt.splice(S.belt.indexOf(b), 1);
+}
+
 async function resolve() {
   await wait(400);
   if (S.over) return;
@@ -463,14 +482,11 @@ async function doMerges() {
   let merged = true;
   while (merged && !S.over) {
     merged = false;
-    for (let i = 0; i + 2 < S.belt.length; i++) {
-      const trio = S.belt.slice(i, i + 3);
-      if (trio.every((t) => t.kind === 'ing' && t.id === trio[0].id && !t.fly && !t.merging)) {
-        await mergeAt(i);
-        merged = true;
-        break;
-      }
-    }
+    // any three landed copies of an ingredient merge, wherever they sit on the ring
+    const groups = {};
+    S.belt.forEach((b) => { if (b.kind === 'ing' && !b.fly && !b.merging) (groups[b.id] ||= []).push(b); });
+    const trio = Object.values(groups).find((g) => g.length >= 3);
+    if (trio) { await mergeTrio(trio.slice(0, 3)); merged = true; }
   }
 }
 
@@ -482,18 +498,19 @@ function release(b, x, y, s, ms) {
   b.el.style.transform = `scale(${s})`;
 }
 
-async function mergeAt(i) {
-  const [a, mid, c] = S.belt.slice(i, i + 3);
+async function mergeTrio(trio) {
+  // the middle one along the ring stays put and becomes the dish
+  const cost = (t) => trio.reduce((sum, o) => sum + ringDist(t.slot, o.slot), 0);
+  const mid = trio.reduce((m, t) => (cost(t) < cost(m) ? t : m));
+  const [a, c] = trio.filter((t) => t !== mid);
   const MERGE_MS = 240;
-  S.holdUntil = Infinity;
   mid.merging = true;
   [a, c].forEach((t) => { t.merging = true; t.merge = { into: mid, t0: performance.now(), dur: MERGE_MS }; });
   await wait(MERGE_MS);
 
   // the middle entry becomes the dish in place; the outer two vanish
   a.el.remove(); c.el.remove();
-  S.belt.splice(S.belt.indexOf(a), 1);
-  S.belt.splice(S.belt.indexOf(c), 1);
+  vacate(a); vacate(c);
   mid.el.remove();
   mid.el = beltItemEl('dish', mid.id);
   mid.el.classList.add('pop');
@@ -503,14 +520,7 @@ async function mergeAt(i) {
   burst(mid.x + ITEM_HALF, mid.y + ITEM_HALF, 120);
   sfx.merge();
   updateBeltHud();
-  // Keep the dish in the middle slot: shift the slot frame back one slot and every
-  // entry's pos by -1 (nothing moves on screen). Indices are now one lower behind the
-  // dish and unchanged ahead of it, so after the pause the items ahead ease back one
-  // slot and the items behind ease forward one slot, closing in on the dish.
-  S.offset -= 1 / S.cap;
-  S.belt.forEach((b) => { b.pos -= 1; });
-  S.holdUntil = performance.now() + 350;
-  await wait(450);
+  await wait(350);
 }
 
 // Dishes ride the belt; one is handed over only as it passes under the customer who ordered it.
@@ -527,7 +537,7 @@ function passServes() {
     const c = S.custs.find((c, k) => c.order === b.id && !c.busy && Math.abs(cx - CUST_X[k]) < SERVE_REACH);
     if (!c) continue;
     c.busy = true;
-    S.belt.splice(i, 1);
+    vacate(b);
     updateBeltHud();
     serve(b, c);
     return;
@@ -629,7 +639,9 @@ const BOOSTERS = {
     return true;
   },
   slot() {
+    // a new empty slot joins the ring; items glide to the new spacing
     S.cap++;
+    S.slots.push(null);
     updateBeltHud();
     return true;
   },
