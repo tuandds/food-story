@@ -9,7 +9,8 @@ const AVATARS = 16;
 const GAME_W = 540, GAME_H = 960;
 const CUST_X = [150, 230, 310, 390]; // front-row customer columns
 const BASE_CAP = 7;
-const BELT_SPEED = 0.05; // loops per second
+const BELT_SPEED = 0.2; // loops per second
+const BELT_ARROWS = 14;
 
 // Belt lane centre-line in Group-1.png pixel space (1012x376): a stadium shape
 const BELT = { x: 32, y: 334, w: 476, h: 177, imgW: 1012, imgH: 376, cl: 174, cr: 838, cy: 155, r: 95 };
@@ -246,12 +247,31 @@ function beltItemEl(kind, id) {
 
 const ITEM_HALF = 27, ITEM_LIFT = 34; // .bi is 54x54; the plate disc sits on the lane
 
+// chevrons painted on the belt surface, travelling with it to show the direction
+const arrows = Array.from({ length: BELT_ARROWS }, () => {
+  const a = document.createElement('div');
+  a.className = 'arrow';
+  beltEl.appendChild(a);
+  return a;
+});
+
+function drawArrows(offset) {
+  arrows.forEach((a, k) => {
+    const u = offset + (k + 0.5) / BELT_ARROWS;
+    const p = beltPoint(u), q = beltPoint(u + 0.002);
+    const deg = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+    // .arrow is a top-left corner; rotating by 135° makes it point along +x
+    a.style.transform = `translate(${p.x - BELT.x}px, ${p.y - BELT.y}px) rotate(${deg + 135}deg)`;
+  });
+}
+
 let last = performance.now();
 function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (S && !S.paused) {
     S.offset += dt * BELT_SPEED;
+    drawArrows(S.offset);
     S.belt.forEach((b, i) => {
       b.pos += (i - b.pos) * Math.min(1, dt * 9);
       const p = beltPoint(S.offset - b.pos / S.cap);

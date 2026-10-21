@@ -95,7 +95,10 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
 }
 #belt.danger #belt-count { color: #ff5a4a; animation: pulse .5s ease-in-out infinite; }
 @keyframes pulse { 50% { scale: 1.15; } }
-.arrow { position: absolute; width: 14px; height: 14px; border-left: 4px solid rgba(255,255,255,.12); border-top: 4px solid rgba(255,255,255,.12); }
+.arrow {
+  position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; will-change: transform;
+  border-left: 5px solid rgba(255,220,180,.22); border-top: 5px solid rgba(255,220,180,.22); border-radius: 3px 0 0 0;
+}
 
 /* items riding the belt */
 .bi { position: absolute; left: 0; top: 0; width: 54px; height: 54px; will-change: transform; pointer-events: none; }
