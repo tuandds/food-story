@@ -114,7 +114,16 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
 @keyframes pop { from { scale: 0; } }
 
 /* ---------- table & plates ---------- */
-#table { position: absolute; left: 0; top: 522px; width: 540px; height: 352px; overflow: hidden; z-index: 1; }
+/* wooden table framed like the conveyor: orange rim, dark edge, 3D lip */
+#table {
+  position: absolute; left: 14px; top: 524px; width: 512px; height: 340px; overflow: hidden; z-index: 1;
+  border: 8px solid #c27a45; border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(40,15,0,.35), rgba(40,15,0,0) 22px),
+    linear-gradient(rgba(70,35,10,.18), rgba(70,35,10,.18)),
+    #a8673d url(assets/ui/Layer-3_1.png) center top / 100% auto;
+  box-shadow: inset 0 0 0 3px #7a4428, 0 0 0 2px #8a4f2c, 0 7px 0 #9a5130, 0 12px 10px rgba(80,35,0,.35);
+}
 .plate {
   position: absolute; left: 0; top: 0;
   background: url(assets/ui/dow.png) center / 100% 100% no-repeat;
