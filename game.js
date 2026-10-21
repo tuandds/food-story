@@ -186,7 +186,8 @@ const PLATE_ASPECT = 132 / 140; // dow.png is slightly wider than tall
 
 function drawPlate(p) {
   const h = 2 * p.R * PLATE_ASPECT;
-  p.el.style.transform = `translate(${p.x - p.R}px, ${p.y - h / 2}px)`;
+  // position via the `translate` property so CSS `scale` animations stay centred on the element
+  p.el.style.translate = `${p.x - p.R}px ${p.y - h / 2}px`;
 }
 
 // Plates float like bubbles: a constant upward pull, damped motion, and
@@ -352,7 +353,8 @@ function tick(now) {
       b.z = b.merge.into.z + 1;
     });
     S.belt.forEach((b) => {
-      b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(${b.s})`;
+      b.el.style.translate = `${b.x}px ${b.y}px`;
+      b.el.style.transform = `scale(${b.s})`;
       b.el.style.zIndex = b.z;
     });
     passServes();
@@ -472,9 +474,10 @@ async function doMerges() {
 
 // detach a belt item from the rAF loop and animate it with CSS instead
 function release(b, x, y, s, ms) {
-  b.el.style.transition = `transform ${ms}ms cubic-bezier(.5,-0.2,.4,1.1), opacity ${ms}ms`;
+  b.el.style.transition = `translate ${ms}ms cubic-bezier(.5,-0.2,.4,1.1), transform ${ms}ms, opacity ${ms}ms`;
   b.el.style.zIndex = 60;
-  b.el.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  b.el.style.translate = `${x}px ${y}px`;
+  b.el.style.transform = `scale(${s})`;
 }
 
 async function mergeAt(i) {
@@ -494,7 +497,7 @@ async function mergeAt(i) {
   mid.el.classList.add('pop');
   mid.kind = 'dish';
   mid.merging = false;
-  mid.el.style.transform = `translate(${mid.x}px, ${mid.y}px)`;
+  mid.el.style.translate = `${mid.x}px ${mid.y}px`;
   burst(mid.x + ITEM_HALF, mid.y + ITEM_HALF, 120);
   sfx.merge();
   updateBeltHud();

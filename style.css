@@ -98,7 +98,7 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
 }
 
 /* items riding the belt */
-.bi { position: absolute; left: 0; top: 0; width: 54px; height: 54px; will-change: transform; pointer-events: none; }
+.bi { position: absolute; left: 0; top: 0; width: 54px; height: 54px; will-change: translate, transform; pointer-events: none; }
 .bi .disc {
   position: absolute; left: 2px; top: 16px; width: 50px; height: 34px; border-radius: 50%;
   background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c) 55%, #fff) 0 45%, var(--c) 47% 70%, color-mix(in srgb, var(--c) 70%, #000) 72%);
@@ -125,7 +125,7 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
   position: absolute; left: 0; top: 0;
   background: url(assets/ui/dow.png) center / 100% 100% no-repeat;
   filter: drop-shadow(0 6px 5px rgba(120,55,0,.35));
-  transition: opacity .3s; will-change: transform;
+  transition: opacity .3s; will-change: translate;
 }
 .plate.spawn { opacity: 0; }
 .plate.vanish { animation: vanish .3s ease-in forwards; }
@@ -156,7 +156,7 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
 
 /* ---------- fx ---------- */
 #layer { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
-.burst { position: absolute; transform: translate(-50%,-50%); pointer-events: none; animation: burst .45s ease-out forwards; }
+.burst { position: absolute; translate: -50% -50%; pointer-events: none; animation: burst .45s ease-out forwards; }
 @keyframes burst { from { scale: .2; opacity: 1; } to { scale: 1.3; opacity: 0; } }
 
 /* ---------- overlay ---------- */
