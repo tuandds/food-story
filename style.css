@@ -191,3 +191,31 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
   opacity: 0; transition: opacity .25s;
 }
 #toast.show { opacity: 1; }
+
+/* ---------- level features ---------- */
+/* Food Link: pink link stretched between the pair */
+.rope { position: absolute; z-index: 3; pointer-events: none; transform-origin: 50% 50%; filter: drop-shadow(0 2px 1px rgba(80,20,40,.3)); }
+.rope.flying { z-index: 49; }
+.rope.snap { animation: snap .35s ease-in forwards; }
+@keyframes snap { 30% { scale: 1.15 .6; opacity: 1; } to { scale: 1.3 0; opacity: 0; } }
+
+/* Locked Dish key printed on a plate */
+.keymark {
+  position: absolute; right: -4%; bottom: 2%; z-index: 4; rotate: -35deg; pointer-events: none;
+  filter: drop-shadow(0 2px 2px rgba(80,40,0,.45));
+}
+.keymark svg, .key-fly svg { width: 100%; height: 100%; display: block; }
+.key-fly { position: absolute; left: 0; top: 0; z-index: 70; filter: drop-shadow(0 0 10px #fff3a0) drop-shadow(0 4px 3px rgba(0,0,0,.35)); }
+
+/* Hidden Dish cloche / Locked Dish dome */
+.cover { position: absolute; bottom: 0; z-index: 5; cursor: pointer; transition: translate .45s cubic-bezier(.5,-0.4,.5,1), opacity .45s; }
+.cover > img { width: 100%; display: block; filter: drop-shadow(0 6px 5px rgba(60,30,0,.35)); }
+.cover.cloche > img { margin-bottom: -4%; }
+.cover.dome > img { margin-bottom: -6%; }
+.cover.open { translate: 0 -70px; opacity: 0; pointer-events: none; }
+.cover .tag {
+  position: absolute; left: 50%; top: 4%; width: 40%; aspect-ratio: 128 / 138; translate: -50% 0;
+  background: url(assets/ui/tag.png) center / 100% 100% no-repeat;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8%;
+}
+.cover .tag span { font: 26px 'Lilita One', sans-serif; color: #fff; -webkit-text-stroke: 5px #6b3b12; paint-order: stroke fill; line-height: 1; }

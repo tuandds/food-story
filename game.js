@@ -103,6 +103,22 @@ function newLevel() {
     }
   });
 
+  const plates = plateItems.map((ids) => ({
+    r: ids.length === 3 ? rand(0.145, 0.165) : rand(0.112, 0.128), // fraction of table width
+    px: Math.random(),
+    slots: ids.map((id) => ({ id })),
+    el: null,
+  }));
+  addFeatures(plates);
+  const queue = orderQueue(orders, plates);
+  const hidden = plates.find((p) => p.hidden);
+  if (hidden) {
+    // reveal after a few serves that never depend on what is under the cover
+    const free = queue.filter((q) => !q.blocked).length;
+    if (free > 0) hidden.hidden = Math.min(3, free);
+    else delete hidden.hidden;
+  }
+
   if (S) S.belt.forEach((b) => b.el.remove());
   S = {
     cap: BASE_CAP,
@@ -111,13 +127,9 @@ function newLevel() {
     slots: new Array(BASE_CAP).fill(null),
     belt: [], // occupied entries {kind:'ing'|'dish', id, el, slot, rel, fly}
     offset: 0, // how far the ring has turned, in loops
-    plates: plateItems.map((ids) => ({
-      r: ids.length === 3 ? rand(0.145, 0.165) : rand(0.112, 0.128), // fraction of table width
-      px: Math.random(),
-      slots: ids.map((id) => ({ id })),
-      el: null,
-    })),
-    queue: orders.map((id) => ({ id, avatar: Math.floor(Math.random() * AVATARS) })),
+    plates,
+    queue,
+    ropes: [], // Food Link ropes travelling with their pair to the belt
     custs: [],
     served: 0,
     total: orders.length,
@@ -128,6 +140,56 @@ function newLevel() {
     paused: false,
   };
   render();
+}
+
+// ---------------- level features ----------------
+// Each feature starts at its level and stays in every later level.
+const FEATURES = [
+  { key: 'hidden', level: 3, name: 'Hidden Dish' },
+  { key: 'link', level: 5, name: 'Food Link' },
+  { key: 'locked', level: 8, name: 'Locked Dish' },
+];
+const hasFeature = (key) => level >= FEATURES.find((f) => f.key === key).level;
+
+function addFeatures(plates) {
+  // feature plates come from the first few, which the packing puts near the top
+  const pool = shuffle(plates.slice(0, Math.min(6, plates.length)));
+  const take = (ok = () => true) => {
+    const i = pool.findIndex(ok);
+    return i < 0 ? null : pool.splice(i, 1)[0];
+  };
+  if (hasFeature('locked') && pool.length >= 2) {
+    take().locked = true;
+    take().key = true;
+  }
+  if (hasFeature('hidden')) {
+    const p = take();
+    if (p) p.hidden = 1; // real count is set once the order queue is known
+  }
+  if (hasFeature('link')) {
+    const p = take((q) => q.slots.length >= 2) || plates.find((q) => q.slots.length >= 2 && !q.hidden && !q.locked);
+    if (p) {
+      const [a, b] = shuffle(p.slots.slice());
+      a.link = b; b.link = a;
+    }
+  }
+}
+
+// Orders that need an ingredient sealed under a cover or dome go to the back of the
+// queue, so the customers up front can always be served first.
+function orderQueue(orders, plates) {
+  const sealed = {};
+  plates.filter((p) => p.hidden || p.locked).forEach((p) => p.slots.forEach((s) => { sealed[s.id] = (sealed[s.id] || 0) + 1; }));
+  const total = {};
+  orders.forEach((id) => { total[id] = (total[id] || 0) + 1; });
+  const ready = {};
+  Object.keys(total).forEach((id) => { ready[id] = Math.min(total[id], Math.floor((total[id] * 3 - (sealed[id] || 0)) / 3)); });
+  const front = [], back = [];
+  orders.forEach((id) => {
+    const q = { id, avatar: Math.floor(Math.random() * AVATARS) };
+    if (ready[id] > 0) { ready[id]--; front.push(q); } else { q.blocked = true; back.push(q); }
+  });
+  return front.concat(back);
 }
 
 // ---------------- rendering ----------------
@@ -150,6 +212,8 @@ function render() {
   updateHud();
   renderQueue();
   S.custs.forEach((c, i) => setTimeout(() => nextCustomer(c), 250 + i * 160));
+  const intro = FEATURES.find((f) => f.level === level);
+  if (intro) setTimeout(() => toast(`Tính năng mới: ${intro.name}`), 900);
 }
 
 function renderQueue() {
@@ -169,12 +233,38 @@ function buildPlate(p, idx) {
   const el = document.createElement('div');
   el.className = 'plate spawn';
   p.el = el;
+  if (p.key) {
+    p.keyEl = document.createElement('div');
+    p.keyEl.className = 'keymark';
+    p.keyEl.innerHTML = KEY_SVG;
+    el.appendChild(p.keyEl);
+  }
+  const linked = p.slots.find((s) => s.link);
+  if (linked) {
+    const rope = document.createElement('img');
+    rope.className = 'rope'; rope.src = 'assets/ui/link.png'; rope.draggable = false;
+    linked.rope = linked.link.rope = rope;
+    el.appendChild(rope);
+  }
   p.slots.forEach((s) => {
     const img = document.createElement('img');
     img.className = 'item'; img.src = ingSrc(s.id); img.draggable = false;
     img.addEventListener('pointerdown', (e) => { e.preventDefault(); tapItem(p, s); });
     s.el = img; el.appendChild(img);
   });
+  if (p.hidden || p.locked) {
+    p.cover = document.createElement('div');
+    p.cover.className = p.locked ? 'cover dome' : 'cover cloche';
+    p.cover.innerHTML = p.locked
+      ? '<img src="assets/ui/locked_dome.png" alt="">'
+      : `<img src="assets/ui/cloche.png" alt=""><div class="tag"><span>${p.hidden}</span></div>`;
+    p.cover.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      p.cover.animate([{ rotate: '0deg' }, { rotate: '-6deg' }, { rotate: '6deg' }, { rotate: '0deg' }], 300);
+      toast(p.locked ? 'Dọn đĩa có chìa khóa để mở!' : `Phục vụ thêm ${p.hidden} khách để mở!`);
+    });
+    el.appendChild(p.cover);
+  }
   table.appendChild(el);
   setTimeout(() => el.classList.remove('spawn'), 60 + idx * 40);
 }
@@ -272,12 +362,35 @@ function layoutPlates() {
     const size = r * (p.slots.length === 3 ? 0.8 : 0.92);
     const cy = h * 0.46; // centre of the plate's top face (rim is drawn below)
     p.slots.forEach((s, i) => {
+      s.ix = r + pos[i][0] * r; s.iy = cy + pos[i][1] * r;
       s.el.style.width = s.el.style.height = `${size}px`;
-      s.el.style.left = `${r + pos[i][0] * r}px`;
-      s.el.style.top = `${cy + pos[i][1] * r}px`;
+      s.el.style.left = `${s.ix}px`;
+      s.el.style.top = `${s.iy}px`;
     });
+    const linked = p.slots.find((s) => s.rope && !s.taken);
+    if (linked) placeRope(linked.rope, linked.ix, linked.iy, linked.link.ix, linked.link.iy, size * 0.3);
+    if (p.keyEl) p.keyEl.style.width = p.keyEl.style.height = `${r * 0.75}px`;
+    if (p.cover) {
+      p.cover.style.width = `${2 * r * 1.06}px`;
+      p.cover.style.left = `${-r * 0.06}px`;
+    }
   }
 }
+
+// stretch the link sprite (drawn vertically) between two points
+function placeRope(el, x1, y1, x2, y2, width) {
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const deg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI - 90;
+  el.style.width = `${width}px`;
+  el.style.height = `${len}px`;
+  el.style.left = `${(x1 + x2) / 2 - width / 2}px`;
+  el.style.top = `${(y1 + y2) / 2 - len / 2}px`;
+  el.style.transform = `rotate(${deg}deg)`;
+}
+
+const KEY_SVG = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><g fill="#ffcc2e" stroke="#9a5b00" stroke-width="5" stroke-linejoin="round">
+<circle cx="30" cy="34" r="20"/><path d="M44 47 L84 87 L76 95 L69 88 L62 95 L55 88 L62 81 L36 55 Z"/></g>
+<circle cx="30" cy="34" r="8" fill="#9a5b00"/><path d="M18 26 a14 14 0 0 1 14 -8" fill="none" stroke="#fff6c0" stroke-width="4" stroke-linecap="round"/></svg>`;
 
 // ---------------- conveyor ----------------
 // point on the belt lane for loop parameter u (0..1), in game coordinates
@@ -359,6 +472,15 @@ function tick(now) {
       b.el.style.transform = `scale(${b.s})`;
       b.el.style.zIndex = b.z;
     });
+    S.ropes = S.ropes.filter((r) => {
+      const ax = r.a.x + ITEM_HALF, ay = r.a.y + 20, bx = r.b.x + ITEM_HALF, by = r.b.y + 20;
+      placeRope(r.el, ax, ay, bx, by, 16);
+      if (r.a.fly || r.b.fly) return true;
+      r.el.classList.add('snap');
+      beep(900, 0.05, 'square', 0.05);
+      setTimeout(() => r.el.remove(), 350);
+      return false;
+    });
     passServes();
   }
   requestAnimationFrame(tick);
@@ -416,24 +538,22 @@ function nextCustomer(c) {
 
 // ---------------- gameplay ----------------
 function tapItem(plate, slot) {
-  if (S.over || S.paused || slot.taken) return;
-  if (S.belt.length >= S.cap) { toast('Băng chuyền đầy!'); return; }
-  slot.taken = true;
+  if (S.over || S.paused || slot.taken || plate.hidden || plate.locked) return;
+  // a Food Link pair always travels together
+  const group = slot.link && !slot.link.taken ? [slot, slot.link] : [slot];
+  if (S.cap - S.belt.length < group.length) { toast(group.length > 1 ? 'Cần 2 ô trống!' : 'Băng chuyền đầy!'); return; }
   sfx.tap();
   clearHints();
 
-  const from = rel(slot.el);
-  slot.el.style.visibility = 'hidden';
-  slot.el.style.pointerEvents = 'none';
-
-  const k = pickSlot(slot.id, from.x + from.w / 2, from.y + from.h / 2);
-  const el = beltItemEl('ing', slot.id);
-  const entry = {
-    kind: 'ing', id: slot.id, el, slot: k, rel: k / S.cap,
-    fly: { x: from.x + from.w / 2 - ITEM_HALF, y: from.y - 6, s: from.w / 40, t0: performance.now(), dur: 380 },
-  };
-  S.slots[k] = entry;
-  S.belt.push(entry);
+  const entries = group.map((s) => launch(s));
+  if (entries.length === 2) {
+    // the rope leaves the plate with the pair and snaps once both are on the belt
+    const rope = slot.rope;
+    rope.remove();
+    rope.className = 'rope flying';
+    layer.appendChild(rope);
+    S.ropes.push({ el: rope, a: entries[0], b: entries[1] });
+  }
   updateBeltHud();
 
   // empty plate disappears, the rest float up
@@ -441,11 +561,72 @@ function tapItem(plate, slot) {
     S.plates.splice(S.plates.indexOf(plate), 1);
     plate.el.classList.add('vanish');
     sfx.plate();
+    if (plate.key) releaseKey(plate);
     setTimeout(() => plate.el.remove(), 300);
   }
 
   S.jobs++;
   S.pending = S.pending.then(resolve);
+}
+
+function launch(slot) {
+  slot.taken = true;
+  const from = rel(slot.el);
+  slot.el.style.visibility = 'hidden';
+  slot.el.style.pointerEvents = 'none';
+  const k = pickSlot(slot.id, from.x + from.w / 2, from.y + from.h / 2);
+  const entry = {
+    kind: 'ing', id: slot.id, el: beltItemEl('ing', slot.id), slot: k, rel: k / S.cap,
+    fly: { x: from.x + from.w / 2 - ITEM_HALF, y: from.y - 6, s: from.w / 40, t0: performance.now(), dur: 380 },
+  };
+  S.slots[k] = entry;
+  S.belt.push(entry);
+  return entry;
+}
+
+// Locked Dish: the key printed on a cleared plate flies to the nearest locked plate
+async function releaseKey(plate) {
+  const from = rel(plate.keyEl);
+  const locks = S.plates.filter((p) => p.locked && !p.unlocking);
+  if (!locks.length) return;
+  const target = locks.reduce((a, b) => (Math.hypot(a.x - plate.x, a.y - plate.y) < Math.hypot(b.x - plate.x, b.y - plate.y) ? a : b));
+  target.unlocking = true;
+  const key = document.createElement('div');
+  key.className = 'key-fly';
+  key.innerHTML = KEY_SVG;
+  key.style.width = key.style.height = `${from.w}px`;
+  key.style.translate = `${from.x}px ${from.y}px`;
+  layer.appendChild(key);
+  key.animate([{ scale: 1 }, { scale: 1.5 }], { duration: 250, fill: 'forwards' });
+  await wait(250);
+  const to = rel(target.el);
+  key.style.transition = 'translate .55s cubic-bezier(.5,-0.3,.4,1.2), rotate .55s';
+  key.style.translate = `${to.x + to.w / 2 - from.w / 2}px ${to.y + to.h * 0.45 - from.h / 2}px`;
+  key.style.rotate = '360deg';
+  await wait(560);
+  key.remove();
+  sfx.merge();
+  openCover(target);
+  target.locked = false;
+}
+
+function openCover(p) {
+  const r = rel(p.el);
+  burst(r.x + r.w / 2, r.y + r.h / 2, r.w * 1.6);
+  p.cover.classList.add('open');
+  setTimeout(() => { p.cover.remove(); p.cover = null; }, 450);
+}
+
+// Hidden Dish: every serve counts the cover down; at 0 it lifts
+function countDownHidden() {
+  S.plates.forEach((p) => {
+    if (!p.hidden) return;
+    p.hidden--;
+    const tag = p.cover.querySelector('.tag span');
+    tag.textContent = p.hidden;
+    tag.parentElement.animate([{ scale: 1.4 }, { scale: 1 }], 300);
+    if (p.hidden === 0) openCover(p);
+  });
 }
 
 const ringDist = (a, b) => { const d = Math.abs(a - b) % S.cap; return Math.min(d, S.cap - d); };
@@ -556,6 +737,7 @@ async function serve(b, c) {
   sfx.serve();
   c.el.classList.add('happy');
   S.served++;
+  countDownHidden();
   updateHud();
   await wait(550);
   c.el.classList.add('leave');
@@ -618,7 +800,7 @@ const BOOSTERS = {
     // prefer finishing a triple already on the belt, else a waiting order
     const counts = {};
     S.belt.forEach((b) => { if (b.kind === 'ing') counts[b.id] = (counts[b.id] || 0) + 1; });
-    const onPlates = (id) => S.plates.flatMap((p) => p.slots).filter((s) => !s.taken && s.id === id);
+    const onPlates = (id) => S.plates.filter((p) => !p.hidden && !p.locked).flatMap((p) => p.slots).filter((s) => !s.taken && s.id === id);
     let id = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a])
       .find((k) => onPlates(k).length >= 3 - counts[k]);
     if (id === undefined) id = S.custs.map((c) => c.order).find((o) => o && onPlates(o).length >= 3);
@@ -630,7 +812,8 @@ const BOOSTERS = {
     return true;
   },
   shuffle() {
-    const slots = S.plates.flatMap((p) => p.slots).filter((s) => !s.taken);
+    // covered plates and linked pairs keep their contents
+    const slots = S.plates.filter((p) => !p.hidden && !p.locked).flatMap((p) => p.slots).filter((s) => !s.taken && !s.link);
     if (slots.length < 2) return false;
     const ids = shuffle(slots.map((s) => s.id));
     slots.forEach((s, i) => { s.id = ids[i]; s.el.src = ingSrc(s.id); s.el.animate([{ scale: 0.3 }, { scale: 1 }], 300); });
