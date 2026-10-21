@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Food Story</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Lilita+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game">
+  <div id="queue-row"></div>
+  <div id="customers"></div>
+  <div id="curtain"></div>
+  <div id="title"><div id="lvl">Level 1</div><div id="diff">Easy</div></div>
+  <button id="btn-settings" title="Cài đặt"><img src="assets/ui/setting.png" alt="Cài đặt"></button>
+  <div id="qbox"><img src="assets/cust/0.png" alt=""><span id="qcount">0</span></div>
+
+  <div id="belt"><div id="belt-count">0/7</div></div>
+  <div id="table"></div>
+
+  <div id="boosters">
+    <button class="booster" data-b="hint"><img src="assets/ui/pu_hint.png" alt=""><span class="cnt"></span><label>Gợi ý</label></button>
+    <button class="booster" data-b="shuffle"><img src="assets/ui/pu_shuffle.png" alt=""><span class="cnt"></span><label>Xáo trộn</label></button>
+    <button class="booster" data-b="slot"><img src="assets/ui/pu_xtr_slot.png" alt=""><span class="cnt"></span><label>+1 Ô</label></button>
+  </div>
+
+  <div id="layer"></div>
+  <div id="overlay" class="hidden">
+    <div class="card">
+      <img class="rays" src="assets/ui/rays.png" alt="">
+      <img class="flags" src="assets/ui/flags.png" alt="">
+      <img class="title-img" alt="">
+      <div class="title-txt"></div>
+      <img class="star" src="assets/ui/star.png" alt="">
+      <p class="msg"></p>
+      <button class="big-btn" id="btn-next"></button>
+      <button class="big-btn alt" id="btn-alt"></button>
+    </div>
+  </div>
+  <div id="toast"></div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
