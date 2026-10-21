@@ -18,13 +18,35 @@ const BELT = { x: 32, y: 334, w: 476, h: 177, imgW: 1012, imgH: 376, cl: 174, cr
 const $ = (s) => document.querySelector(s);
 const game = $('#game'), table = $('#table'), layer = $('#layer'), beltEl = $('#belt');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Like wait(), but abandons the calling async flow if a new level started meanwhile,
+// so a serve or merge from the old level can't touch the new one.
+const STALE = Symbol('stale level');
+const step = (ms) => { const st = S; return wait(ms).then(() => { if (S !== st) throw STALE; }); };
+window.addEventListener('unhandledrejection', (e) => { if (e.reason === STALE) e.preventDefault(); });
 const rand = (a, b) => a + Math.random() * (b - a);
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const ingSrc = (id) => `assets/ing/${id}.png`;
 const dishSrc = (id) => `assets/dish/${id}.png`;
 
 let level = 1;
-try { level = Math.max(1, parseInt(localStorage.getItem('fs_level'), 10) || 1); } catch (e) {}
+// 10 hand-tuned levels; difficulty climbs to its maximum at level 10.
+// Plates are still dealt at random each time a level starts.
+// hidden / link / locked: how many covered plates, linked pairs and locked plates (each
+// locked plate comes with one key plate). They can land anywhere, deep plates included.
+const LEVELS = [
+  { customers: 7, types: 3 },
+  { customers: 9, types: 4 },
+  { customers: 11, types: 5, hidden: 1 },
+  { customers: 13, types: 6, hidden: 1 },
+  { customers: 16, types: 7, hidden: 2, link: 1 },
+  { customers: 18, types: 8, hidden: 2, link: 2 },
+  { customers: 21, types: 9, hidden: 2, link: 3 },
+  { customers: 24, types: 10, hidden: 2, link: 3, locked: 1 },
+  { customers: 27, types: 11, hidden: 3, link: 4, locked: 2 },
+  { customers: 30, types: 12, hidden: 3, link: 4, locked: 3 },
+];
+const clampLevel = (n) => Math.min(LEVELS.length, Math.max(1, Math.round(Number(n)) || 1));
+try { level = clampLevel(parseInt(localStorage.getItem('fs_level'), 10)); } catch (e) {}
 
 let S; // level state
 
@@ -64,29 +86,21 @@ const sfx = {
 };
 
 // ---------------- level generation ----------------
-function difficulty(n) {
-  if (n > 2 && n % 5 === 0) return 'hard';
-  if (n > 2 && n % 3 === 0) return 'normal';
-  return 'easy';
-}
-
-function levelConfig(n) {
-  const extra = { easy: 0, normal: 1, hard: 2 }[difficulty(n)];
-  return {
-    customers: Math.min(5 + n * 2, 36),
-    types: Math.min(3 + Math.ceil(n * 0.8) + extra, 16),
-  };
-}
-
 function newLevel() {
-  const cfg = levelConfig(level);
+  const cfg = LEVELS[level - 1];
   const types = shuffle(ING_IDS.slice()).slice(0, cfg.types);
   const orders = [];
   for (let i = 0; i < cfg.customers; i++) orders.push(types[i % types.length]);
   shuffle(orders);
 
-  // 3 ingredients per order, scattered across plates of 2–3 items
-  const items = shuffle(orders.flatMap((id) => [id, id, id]));
+  // 3 ingredients per order, dealt onto plates roughly in queue order so the top of the
+  // table feeds the first customers; a window that widens each level mixes them up.
+  const items = orders.flatMap((id) => [id, id, id]);
+  const mix = 4 + Math.round(level * 1.5);
+  for (let i = 0; i < items.length; i++) {
+    const j = i + Math.floor(Math.random() * Math.min(mix, items.length - i));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
   const sizes = [];
   let left = items.length;
   while (left > 0) {
@@ -109,15 +123,24 @@ function newLevel() {
     slots: ids.map((id) => ({ id })),
     el: null,
   }));
-  addFeatures(plates);
+  addFeatures(plates, cfg);
   const queue = orderQueue(orders, plates);
-  const hidden = plates.find((p) => p.hidden);
-  if (hidden) {
-    // reveal after a few serves that never depend on what is under the cover
-    const free = queue.filter((q) => !q.blocked).length;
-    if (free > 0) hidden.hidden = Math.min(3, free);
-    else delete hidden.hidden;
-  }
+  // Every cover counts down on each serve, even while buried, so deeper covers start
+  // higher: roughly the serves that happen before the table clears down to them, plus 2.
+  // Never more than the customers who don't depend on anything sealed can provide.
+  const free = queue.filter((q) => !q.blocked).length;
+  const totalItems = plates.reduce((n, p) => n + p.slots.length, 0);
+  let above = 0, prev = 0;
+  plates.forEach((p) => {
+    if (p.hidden) {
+      if (free > 0) {
+        const surfacing = Math.round((above / totalItems) * orders.length);
+        p.hidden = Math.min(free, Math.max(2, surfacing + 2, prev + 1));
+        prev = p.hidden;
+      } else delete p.hidden;
+    }
+    above += p.slots.length;
+  });
 
   if (S) S.belt.forEach((b) => b.el.remove());
   S = {
@@ -149,47 +172,53 @@ const FEATURES = [
   { key: 'link', level: 5, name: 'Food Link' },
   { key: 'locked', level: 8, name: 'Locked Dish' },
 ];
-const hasFeature = (key) => level >= FEATURES.find((f) => f.key === key).level;
+function addFeatures(plates, cfg) {
+  const pick = (n, ok) => shuffle(plates.filter(ok)).slice(0, n || 0);
+  const plain = (p) => !p.locked && !p.hidden && !p.key;
+  pick(cfg.locked, plain).forEach((p) => { p.locked = true; });
+  pick(cfg.locked, plain).forEach((p) => { p.key = true; });
+  pick(cfg.hidden, plain).forEach((p) => { p.hidden = 1; }); // real count set once the queue is known
+  pick(cfg.link, (p) => p.slots.length >= 2).forEach((p) => {
+    const [a, b] = shuffle(p.slots.slice());
+    a.link = b; b.link = a;
+  });
 
-function addFeatures(plates) {
-  // feature plates come from the first few, which the packing puts near the top
-  const pool = shuffle(plates.slice(0, Math.min(6, plates.length)));
-  const take = (ok = () => true) => {
-    const i = pool.findIndex(ok);
-    return i < 0 ? null : pool.splice(i, 1)[0];
-  };
-  if (hasFeature('locked') && pool.length >= 2) {
-    take().locked = true;
-    take().key = true;
-  }
-  if (hasFeature('hidden')) {
-    const p = take();
-    if (p) p.hidden = 1; // real count is set once the order queue is known
-  }
-  if (hasFeature('link')) {
-    const p = take((q) => q.slots.length >= 2) || plates.find((q) => q.slots.length >= 2 && !q.hidden && !q.locked);
-    if (p) {
-      const [a, b] = shuffle(p.slots.slice());
-      a.link = b; b.link = a;
-    }
-  }
+  // A sealed plate (cover or dome) trades its ingredients with the bottom plates, which
+  // hold the last customers' orders, so it rarely locks away what the first ones need.
+  const donors = plates.filter((p) => !p.locked && !p.hidden).reverse().flatMap((p) => p.slots);
+  plates.filter((p) => p.locked || p.hidden).forEach((p) => p.slots.forEach((s) => {
+    const t = donors.shift();
+    if (t) [s.id, t.id] = [t.id, s.id];
+  }));
 }
 
-// Orders that need an ingredient sealed under a cover or dome go to the back of the
-// queue, so the customers up front can always be served first.
+// Queue in three tiers so customers up front can always be served first:
+// 0 = needs nothing sealed, 1 = needs a locked plate (opened by keys), 2 = needs a covered
+// plate (opened by serving tier 0/1 customers).
 function orderQueue(orders, plates) {
-  const sealed = {};
-  plates.filter((p) => p.hidden || p.locked).forEach((p) => p.slots.forEach((s) => { sealed[s.id] = (sealed[s.id] || 0) + 1; }));
+  const count = (ok) => {
+    const c = {};
+    plates.filter(ok).forEach((p) => p.slots.forEach((s) => { c[s.id] = (c[s.id] || 0) + 1; }));
+    return c;
+  };
+  const inHidden = count((p) => p.hidden), inLocked = count((p) => p.locked);
   const total = {};
   orders.forEach((id) => { total[id] = (total[id] || 0) + 1; });
-  const ready = {};
-  Object.keys(total).forEach((id) => { ready[id] = Math.min(total[id], Math.floor((total[id] * 3 - (sealed[id] || 0)) / 3)); });
-  const front = [], back = [];
+  const ready0 = {}, ready1 = {};
+  Object.keys(total).forEach((id) => {
+    const all = total[id] * 3, h = inHidden[id] || 0, l = inLocked[id] || 0;
+    ready0[id] = Math.min(total[id], Math.floor((all - h - l) / 3));
+    ready1[id] = Math.min(total[id], Math.floor((all - h) / 3)) - ready0[id];
+  });
+  const tiers = [[], [], []];
   orders.forEach((id) => {
     const q = { id, avatar: Math.floor(Math.random() * AVATARS) };
-    if (ready[id] > 0) { ready[id]--; front.push(q); } else { q.blocked = true; back.push(q); }
+    if (ready0[id] > 0) ready0[id]--;
+    else if (ready1[id] > 0) { ready1[id]--; q.blocked = true; tiers[1].push(q); return; }
+    else { q.blocked = true; tiers[2].push(q); return; }
+    tiers[0].push(q);
   });
-  return front.concat(back);
+  return tiers.flat();
 }
 
 // ---------------- rendering ----------------
@@ -211,7 +240,8 @@ function render() {
   layoutPlates();
   updateHud();
   renderQueue();
-  S.custs.forEach((c, i) => setTimeout(() => nextCustomer(c), 250 + i * 160));
+  const st = S;
+  S.custs.forEach((c, i) => setTimeout(() => { if (S === st) nextCustomer(c); }, 250 + i * 160));
   const intro = FEATURES.find((f) => f.level === level);
   if (intro) setTimeout(() => toast(`Tính năng mới: ${intro.name}`), 900);
 }
@@ -256,8 +286,8 @@ function buildPlate(p, idx) {
     p.cover = document.createElement('div');
     p.cover.className = p.locked ? 'cover dome' : 'cover cloche';
     p.cover.innerHTML = p.locked
-      ? '<img src="assets/ui/locked_dome.png" alt="">'
-      : `<img src="assets/ui/cloche.png" alt=""><div class="tag"><span>${p.hidden}</span></div>`;
+      ? '<div class="glass"><i class="knob"></i><i class="shine"></i></div><img class="padlock" src="assets/ui/padlock.png" alt="">'
+      : `<img class="lid" src="assets/ui/cloche.png" alt=""><div class="num">${p.hidden}</div>`;
     p.cover.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       p.cover.animate([{ rotate: '0deg' }, { rotate: '-6deg' }, { rotate: '6deg' }, { rotate: '0deg' }], 300);
@@ -369,7 +399,7 @@ function layoutPlates() {
     });
     const linked = p.slots.find((s) => s.rope && !s.taken);
     if (linked) placeRope(linked.rope, linked.ix, linked.iy, linked.link.ix, linked.link.iy, size * 0.3);
-    if (p.keyEl) p.keyEl.style.width = p.keyEl.style.height = `${r * 0.75}px`;
+    if (p.keyEl) p.keyEl.style.width = p.keyEl.style.height = `${r * 1.1}px`;
     if (p.cover) {
       p.cover.style.width = `${2 * r * 1.06}px`;
       p.cover.style.left = `${-r * 0.06}px`;
@@ -598,12 +628,12 @@ async function releaseKey(plate) {
   key.style.translate = `${from.x}px ${from.y}px`;
   layer.appendChild(key);
   key.animate([{ scale: 1 }, { scale: 1.5 }], { duration: 250, fill: 'forwards' });
-  await wait(250);
+  await step(250);
   const to = rel(target.el);
   key.style.transition = 'translate .55s cubic-bezier(.5,-0.3,.4,1.2), rotate .55s';
   key.style.translate = `${to.x + to.w / 2 - from.w / 2}px ${to.y + to.h * 0.45 - from.h / 2}px`;
   key.style.rotate = '360deg';
-  await wait(560);
+  await step(560);
   key.remove();
   sfx.merge();
   openCover(target);
@@ -622,9 +652,9 @@ function countDownHidden() {
   S.plates.forEach((p) => {
     if (!p.hidden) return;
     p.hidden--;
-    const tag = p.cover.querySelector('.tag span');
-    tag.textContent = p.hidden;
-    tag.parentElement.animate([{ scale: 1.4 }, { scale: 1 }], 300);
+    const num = p.cover.querySelector('.num');
+    num.textContent = p.hidden;
+    num.animate([{ scale: 1.5 }, { scale: 1 }], 300);
     if (p.hidden === 0) openCover(p);
   });
 }
@@ -652,7 +682,7 @@ function vacate(b) {
 }
 
 async function resolve() {
-  await wait(400);
+  await step(400);
   if (S.over) return;
   await doMerges();
   S.jobs--;
@@ -687,7 +717,7 @@ async function mergeTrio(trio) {
   const MERGE_MS = 240;
   mid.merging = true;
   [a, c].forEach((t) => { t.merging = true; t.merge = { into: mid, t0: performance.now(), dur: MERGE_MS }; });
-  await wait(MERGE_MS);
+  await step(MERGE_MS);
 
   // the middle entry becomes the dish in place; the outer two vanish
   a.el.remove(); c.el.remove();
@@ -701,7 +731,7 @@ async function mergeTrio(trio) {
   burst(mid.x + ITEM_HALF, mid.y + ITEM_HALF, 120);
   sfx.merge();
   updateBeltHud();
-  await wait(350);
+  await step(350);
 }
 
 // Dishes ride the belt; one is handed over only as it passes under the customer who ordered it.
@@ -731,7 +761,7 @@ const servePending = () => S.belt.some((b) => b.kind === 'dish' && S.custs.some(
 async function serve(b, c) {
   const r = rel(c.el.querySelector('.bubble'));
   release(b, r.x + r.w / 2 - ITEM_HALF, r.y + r.h / 2 - ITEM_HALF, 0.8, 450);
-  await wait(450);
+  await step(450);
   b.el.remove();
   burst(r.x + r.w / 2, r.y + r.h / 2, 120);
   sfx.serve();
@@ -739,9 +769,9 @@ async function serve(b, c) {
   S.served++;
   countDownHidden();
   updateHud();
-  await wait(550);
+  await step(550);
   c.el.classList.add('leave');
-  await wait(380);
+  await step(380);
   c.order = null;
   nextCustomer(c);
   checkEnd();
@@ -749,9 +779,10 @@ async function serve(b, c) {
 
 function checkEnd() {
   if (S.over) return;
-  if (S.served >= S.total) { S.over = true; setTimeout(win, 500); return; }
+  const st = S;
+  if (S.served >= S.total) { S.over = true; setTimeout(() => S === st && win(), 500); return; }
   if (S.jobs === 0 && S.belt.length >= S.cap && !S.custs.some((c) => c.busy) && !servePending()) {
-    S.over = true; setTimeout(lose, 400);
+    S.over = true; setTimeout(() => S === st && lose(), 400);
   }
 }
 
@@ -770,9 +801,10 @@ function showOverlay(kind, msg, btn, alt) {
 
 function win() {
   sfx.win();
-  showOverlay('win', `Đã phục vụ ${S.total} khách!`, 'Level tiếp');
+  const last = level >= LEVELS.length;
+  showOverlay('win', last ? `Hoàn thành cả ${LEVELS.length} level!` : `Đã phục vụ ${S.total} khách!`, last ? 'Chơi lại từ đầu' : 'Level tiếp');
   $('#btn-next').onclick = () => {
-    level++;
+    level = last ? 1 : level + 1;
     try { localStorage.setItem('fs_level', level); } catch (e) {}
     newLevel();
   };
@@ -790,7 +822,33 @@ $('#btn-settings').addEventListener('click', () => {
   showOverlay('pause', `Level ${level} · còn ${S.total - S.served} khách`, 'Tiếp tục', 'Chơi lại');
   $('#btn-next').onclick = () => { S.paused = false; last = performance.now(); $('#overlay').classList.add('hidden'); };
   $('#btn-alt').onclick = newLevel;
+  setPick(level);
 });
+
+// ---------------- level picker (settings) ----------------
+// one button per level; the level that introduces a feature carries its icon
+const FEATURE_ICON = { hidden: 'assets/ui/cloche.png', link: 'assets/ui/link.png', locked: 'assets/ui/locked_dome.png' };
+
+function setPick(current) {
+  const grid = $('#lv-grid');
+  grid.innerHTML = '';
+  LEVELS.forEach((cfg, i) => {
+    const n = i + 1;
+    const b = document.createElement('button');
+    b.className = `lp-cell${n === current ? ' current' : ''}`;
+    b.setAttribute('aria-label', `Level ${n}`);
+    const intro = FEATURES.find((f) => f.level === n);
+    b.innerHTML = `<span>${n}</span>${intro ? `<img src="${FEATURE_ICON[intro.key]}" alt="" title="${intro.name}">` : ''}`;
+    b.addEventListener('click', () => goLevel(n));
+    grid.appendChild(b);
+  });
+}
+
+function goLevel(n) {
+  level = clampLevel(n);
+  try { localStorage.setItem('fs_level', level); } catch (e) {}
+  newLevel();
+}
 
 // ---------------- boosters ----------------
 function clearHints() { document.querySelectorAll('.item.hint').forEach((e) => e.classList.remove('hint')); }
