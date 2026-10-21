@@ -107,7 +107,8 @@ function newLevel() {
   S = {
     cap: BASE_CAP,
     belt: [], // {kind:'ing'|'dish', id, el, pos, fly}
-    offset: 0,
+    offset: 0, // slot frame: where slot 0 sits on the loop
+    flow: 0, // surface travel, drives the arrows
     holdUntil: 0,
     plates: plateItems.map((ids) => ({
       r: ids.length === 3 ? rand(0.145, 0.165) : rand(0.112, 0.128), // fraction of table width
@@ -325,8 +326,9 @@ function tick(now) {
   last = now;
   if (S && !S.paused) {
     S.offset += dt * BELT_SPEED;
+    S.flow += dt * BELT_SPEED;
     stepPlates(dt);
-    drawArrows(S.offset);
+    drawArrows(S.flow);
     // slots stay put while a merge is resolving so the dish appears where the middle item was
     const ease = now < S.holdUntil ? 0 : Math.min(1, dt * 7);
     S.belt.forEach((b, i) => {
@@ -501,7 +503,12 @@ async function mergeAt(i) {
   burst(mid.x + ITEM_HALF, mid.y + ITEM_HALF, 120);
   sfx.merge();
   updateBeltHud();
-  // let the dish pop where it was made, then close the gap
+  // Keep the dish in the middle slot: shift the slot frame back one slot and every
+  // entry's pos by -1 (nothing moves on screen). Indices are now one lower behind the
+  // dish and unchanged ahead of it, so after the pause the items ahead ease back one
+  // slot and the items behind ease forward one slot, closing in on the dish.
+  S.offset -= 1 / S.cap;
+  S.belt.forEach((b) => { b.pos -= 1; });
   S.holdUntil = performance.now() + 350;
   await wait(450);
 }
