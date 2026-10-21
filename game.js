@@ -130,9 +130,6 @@ function newLevel() {
 // ---------------- rendering ----------------
 function render() {
   $('#lvl').textContent = `Level ${level}`;
-  const d = difficulty(level);
-  $('#diff').textContent = { easy: 'Easy', normal: 'Normal', hard: 'Hard' }[d];
-  $('#diff').className = d;
   $('#overlay').classList.add('hidden');
   layer.innerHTML = '';
   table.innerHTML = '';

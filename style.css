@@ -23,9 +23,6 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
   font-size: 40px; color: #fff; letter-spacing: 1px;
   -webkit-text-stroke: 7px #4a3320; paint-order: stroke fill; text-shadow: 0 4px 0 #4a3320;
 }
-#diff { margin-top: 6px; font-size: 28px; color: #7cf03e; -webkit-text-stroke: 6px #2f6a12; paint-order: stroke fill; text-shadow: 0 3px 0 #2f6a12; }
-#diff.normal { color: #ffc93a; -webkit-text-stroke-color: #8a4a00; text-shadow: 0 3px 0 #8a4a00; }
-#diff.hard { color: #ff6464; -webkit-text-stroke-color: #7a1010; text-shadow: 0 3px 0 #7a1010; }
 
 #btn-settings {
   position: absolute; right: 30px; top: 34px; z-index: 6; width: 48px; height: 48px; padding: 6px; border: 0; cursor: pointer;
@@ -142,15 +139,15 @@ body { font-family: 'Fredoka', system-ui, sans-serif; user-select: none; -webkit
 @keyframes hint { 50% { transform: translate(-50%,-50%) scale(1.18); filter: drop-shadow(0 0 8px #fff600) drop-shadow(0 0 4px #fff); } }
 
 /* ---------- boosters ---------- */
+/* sits on the curtain, under the level title */
 #boosters {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 86px; z-index: 3;
-  display: flex; justify-content: center; gap: 34px; align-items: center;
-  background: linear-gradient(rgba(40,15,0,0), rgba(40,15,0,.6) 55%);
+  position: absolute; left: 0; right: 0; top: 72px; height: 66px; z-index: 6;
+  display: flex; justify-content: center; gap: 26px; align-items: flex-start;
 }
-.booster { position: relative; border: 0; background: none; padding: 0; cursor: pointer; width: 64px; color: #fff; font: inherit; }
-.booster img { width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 2px rgba(0,0,0,.35)); transition: transform .1s; }
+.booster { position: relative; border: 0; background: none; padding: 0; cursor: pointer; width: 58px; color: #fff; font: inherit; }
+.booster img { width: 46px; height: 46px; object-fit: contain; filter: drop-shadow(0 3px 2px rgba(0,0,0,.35)); transition: transform .1s; }
 .booster:active img { transform: scale(.9); }
-.booster label { display: block; font: 14px 'Lilita One', sans-serif; -webkit-text-stroke: 3px #5a2a0a; paint-order: stroke fill; pointer-events: none; }
+.booster label { display: block; margin-top: -2px; font: 13px 'Lilita One', sans-serif; -webkit-text-stroke: 3px #4a3320; paint-order: stroke fill; pointer-events: none; }
 .booster .cnt {
   position: absolute; top: -4px; right: 0; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 5px;
   background: #ff4f4f; border: 2px solid #fff; font-size: 13px; font-weight: 700; line-height: 18px;
