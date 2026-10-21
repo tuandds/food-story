@@ -108,6 +108,7 @@ function newLevel() {
     cap: BASE_CAP,
     belt: [], // {kind:'ing'|'dish', id, el, pos, fly}
     offset: 0,
+    holdUntil: 0,
     plates: plateItems.map((ids) => ({
       r: ids.length === 3 ? rand(0.145, 0.165) : rand(0.112, 0.128), // fraction of table width
       px: Math.random(),
@@ -325,20 +326,34 @@ function tick(now) {
     S.offset += dt * BELT_SPEED;
     stepPlates(dt);
     drawArrows(S.offset);
+    // slots stay put while a merge is resolving so the dish appears where the middle item was
+    const ease = now < S.holdUntil ? 0 : Math.min(1, dt * 7);
     S.belt.forEach((b, i) => {
-      b.pos += (i - b.pos) * Math.min(1, dt * 9);
+      b.pos += (i - b.pos) * ease;
       const p = beltPoint(S.offset - b.pos / S.cap);
-      let x = p.x - ITEM_HALF, y = p.y - ITEM_LIFT, s = 1;
+      b.x = p.x - ITEM_HALF; b.y = p.y - ITEM_LIFT; b.s = 1;
+      b.z = Math.round(p.y);
       if (b.fly) {
         const t = Math.min(1, (now - b.fly.t0) / b.fly.dur), e = 1 - (1 - t) ** 3;
-        x = b.fly.x + (x - b.fly.x) * e;
-        y = b.fly.y + (y - b.fly.y) * e - Math.sin(t * Math.PI) * 60;
-        s = b.fly.s + (1 - b.fly.s) * e;
+        b.x = b.fly.x + (b.x - b.fly.x) * e;
+        b.y = b.fly.y + (b.y - b.fly.y) * e - Math.sin(t * Math.PI) * 60;
+        b.s = b.fly.s + (1 - b.fly.s) * e;
+        b.z = 50;
         if (t >= 1) b.fly = null;
       }
-      b.x = x; b.y = y;
-      b.el.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
-      b.el.style.zIndex = b.fly ? 50 : Math.round(p.y);
+    });
+    // outer items of a merging trio slide into the middle one as it rides the belt
+    S.belt.forEach((b) => {
+      if (!b.merge) return;
+      const t = Math.min(1, (now - b.merge.t0) / b.merge.dur), e = t * t;
+      b.x += (b.merge.into.x - b.x) * e;
+      b.y += (b.merge.into.y - b.y) * e;
+      b.s = 1 - 0.3 * e;
+      b.z = b.merge.into.z + 1;
+    });
+    S.belt.forEach((b) => {
+      b.el.style.transform = `translate(${b.x}px, ${b.y}px) scale(${b.s})`;
+      b.el.style.zIndex = b.z;
     });
   }
   requestAnimationFrame(tick);
@@ -446,7 +461,7 @@ async function doMerges() {
     merged = false;
     for (let i = 0; i + 2 < S.belt.length; i++) {
       const trio = S.belt.slice(i, i + 3);
-      if (trio.every((t) => t.kind === 'ing' && t.id === trio[0].id && !t.fly)) {
+      if (trio.every((t) => t.kind === 'ing' && t.id === trio[0].id && !t.fly && !t.merging)) {
         await mergeAt(i);
         merged = true;
         break;
@@ -463,19 +478,29 @@ function release(b, x, y, s, ms) {
 }
 
 async function mergeAt(i) {
-  const trio = S.belt.splice(i, 3);
-  const mid = trio[1];
-  trio.forEach((t) => release(t, mid.x, mid.y, 0.7, 220));
-  await wait(220);
-  trio.forEach((t) => t.el.remove());
+  const [a, mid, c] = S.belt.slice(i, i + 3);
+  const MERGE_MS = 240;
+  S.holdUntil = Infinity;
+  mid.merging = true;
+  [a, c].forEach((t) => { t.merging = true; t.merge = { into: mid, t0: performance.now(), dur: MERGE_MS }; });
+  await wait(MERGE_MS);
 
-  const el = beltItemEl('dish', mid.id);
-  el.classList.add('pop');
-  S.belt.splice(i, 0, { kind: 'dish', id: mid.id, el, pos: mid.pos });
+  // the middle entry becomes the dish in place; the outer two vanish
+  a.el.remove(); c.el.remove();
+  S.belt.splice(S.belt.indexOf(a), 1);
+  S.belt.splice(S.belt.indexOf(c), 1);
+  mid.el.remove();
+  mid.el = beltItemEl('dish', mid.id);
+  mid.el.classList.add('pop');
+  mid.kind = 'dish';
+  mid.merging = false;
+  mid.el.style.transform = `translate(${mid.x}px, ${mid.y}px)`;
   burst(mid.x + ITEM_HALF, mid.y + ITEM_HALF, 120);
   sfx.merge();
   updateBeltHud();
-  await wait(380);
+  // let the dish pop where it was made, then close the gap
+  S.holdUntil = performance.now() + 350;
+  await wait(450);
 }
 
 async function doServes() {
