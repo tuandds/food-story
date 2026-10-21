@@ -9,7 +9,7 @@ const AVATARS = 16;
 const GAME_W = 540, GAME_H = 960;
 const CUST_X = [150, 230, 310, 390]; // front-row customer columns
 const BASE_CAP = 7;
-const BELT_SPEED = 0.018; // loops per second
+const BELT_SPEED = 0.05; // loops per second
 
 // Belt lane centre-line in Group-1.png pixel space (1012x376): a stadium shape
 const BELT = { x: 32, y: 334, w: 476, h: 177, imgW: 1012, imgH: 376, cl: 174, cr: 838, cy: 155, r: 95 };
