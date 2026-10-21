@@ -5,7 +5,34 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Food Story</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Lilita+One&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<style>body { visibility: hidden; background: #2a1a10; }</style>
+<script>
+// GitHub Pages lets browsers cache files for 10 minutes. version.txt is always fetched
+// fresh and its value is appended to style.css / game.js, so an update shows up on the
+// next reload. The game script starts only after the stylesheet has loaded.
+(function () {
+  function boot(v) {
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'style.css?v=' + v;
+    css.onload = css.onerror = function () {
+      var start = function () {
+        document.body.style.visibility = 'visible';
+        var js = document.createElement('script');
+        js.src = 'game.js?v=' + v;
+        document.body.appendChild(js);
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+      else start();
+    };
+    document.head.appendChild(css);
+  }
+  fetch('version.txt', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
+    .then(function (t) { boot(encodeURIComponent(t.trim())); })
+    .catch(function () { boot(Date.now()); });
+})();
+</script>
 </head>
 <body>
 <div id="game">
@@ -44,6 +71,5 @@
   </div>
   <div id="toast"></div>
 </div>
-<script src="game.js"></script>
 </body>
 </html>
