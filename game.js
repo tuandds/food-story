@@ -6,6 +6,7 @@ const ING_IDS = Array.from({ length: 45 }, (_, i) => i + 6); // sprites 6..50
 // dominant colour of each ingredient sprite, used for its plate on the belt and the order bubble
 const ING_COLOR = {"6":"#81c213","7":"#ff9f04","8":"#ff9e0d","9":"#7dbd14","10":"#c05a2a","11":"#ffab2b","12":"#ffde4f","13":"#f22406","14":"#7fbd00","15":"#feb133","16":"#ff9d00","17":"#ff4f81","18":"#ffa200","19":"#ffcc04","20":"#ff5744","21":"#f49e5e","22":"#ba48c7","23":"#7d331f","24":"#30b8fe","25":"#f5b142","26":"#eab469","27":"#ffb827","28":"#ff6775","29":"#a95c2a","30":"#b4ba1e","31":"#4c82ca","32":"#f2c770","33":"#ff958b","34":"#684948","35":"#5fc70c","36":"#ef2b00","37":"#ffa301","38":"#9f461b","39":"#e9382f","40":"#ffd592","41":"#e93440","42":"#ffa171","43":"#ff9253","44":"#f96f5d","45":"#fb6e5c","46":"#f1746b","47":"#ffedac","48":"#c7ec92","49":"#ffa798","50":"#ffa102"};
 const AVATARS = 16;
+const FACE = 'assets/cust/face.png'; // every customer uses the plain face, no hair
 const GAME_W = 540, GAME_H = 960;
 const CUST_X = [150, 230, 310, 390]; // front-row customer columns
 const BASE_CAP = 7;
@@ -253,7 +254,7 @@ function renderQueue() {
     g.className = 'ghost';
     g.style.left = `${CUST_X[i] + (i % 2 ? 6 : -6)}px`;
     g.style.top = '150px';
-    g.innerHTML = `<img src="assets/cust/${q.avatar}.png" alt=""><div class="body"></div>`;
+    g.innerHTML = `<img src="${FACE}" alt=""><div class="body"></div>`;
     row.appendChild(g);
   });
 }
@@ -558,7 +559,7 @@ function nextCustomer(c) {
   c.order = next.id; c.busy = false;
   const el = c.el;
   el.classList.remove('empty', 'happy', 'leave');
-  el.querySelector('.head').src = `assets/cust/${next.avatar}.png`;
+  el.querySelector('.head').src = FACE;
   el.querySelector('.bubble').style.setProperty('--c', ING_COLOR[next.id]);
   el.querySelector('.bubble img').src = dishSrc(next.id);
   el.style.transition = 'none';
